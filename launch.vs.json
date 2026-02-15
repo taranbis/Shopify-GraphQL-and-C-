@@ -1,0 +1,31 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "graphql_sync",
+      "name": "graphql_sync (mock server args)",
+      "args": [
+        "--endpoint", "http://localhost:4000/graphql",
+        "--total", "250",
+        "--page-size", "50",
+        "--timeout-ms", "5000"
+      ]
+    },
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "graphql_sync",
+      "name": "graphql_sync (verbose)",
+      "args": [
+        "--endpoint", "http://localhost:4000/graphql",
+        "--total", "250",
+        "--page-size", "50",
+        "--timeout-ms", "5000",
+        "--verbose"
+      ]
+    }
+  ]
+}

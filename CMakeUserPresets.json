@@ -1,0 +1,41 @@
+{
+  "version": 4,
+  "vendor": { "conan": {} },
+  "include": [ "build/build/generators/CMakePresets.json" ],
+  "configurePresets": [
+    {
+      "name": "conan-debug-default",
+      "displayName": "'conan-debug' config",
+      "description": "Configure for Debug. Run first: conan install . -s build_type=Debug --output-folder=build_debug --build=missing",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": { "CMAKE_POLICY_DEFAULT_CMP0091": "NEW" },
+      "toolset": {
+        "value": "v143",
+        "strategy": "external"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolchainFile": "${sourceDir}/build_debug/build/generators/conan_toolchain.cmake",
+      "binaryDir": "${sourceDir}/build_debug/build"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "conan-debug",
+      "displayName": "Conan Debug",
+      "configurePreset": "conan-debug-default",
+      "configuration": "Debug",
+      "jobs": 12
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "conan-debug",
+      "configurePreset": "conan-debug-default",
+      "configuration": "Debug",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

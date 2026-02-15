@@ -1,0 +1,13 @@
+{
+  "name": "shopify-graphql-mock",
+  "version": "1.0.0",
+  "description": "Mock Shopify Admin GraphQL server — cursor pagination + cost throttling",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "graphql": "^16.9.0"
+  }
+}
