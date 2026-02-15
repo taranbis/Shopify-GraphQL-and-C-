@@ -18,6 +18,7 @@ Runs locally against a bundled Node.js mock server — no Shopify credentials re
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Run](#run)
+- [Testing](#testing)
 - [Example output](#example-output)
 - [Design](#design)
 - [License](#license)
@@ -41,6 +42,11 @@ Runs locally against a bundled Node.js mock server — no Shopify credentials re
 │   ├── models.hpp
 │   ├── queries.hpp
 │   └── util.hpp/cpp
+├── tests/
+│   ├── test_util.cpp           # Unit tests: URL parsing, backoff
+│   ├── test_mapping.cpp        # Unit tests: JSON→Product mapping
+│   ├── test_throttle.cpp       # Unit tests: ThrottleController
+│   └── test_integration.cpp    # Integration tests (needs mock server)
 ├── server_mock/
 │   ├── package.json
 │   ├── index.js
@@ -131,6 +137,76 @@ Use `--verbose` for per-request logs.
 | `--page-size N` | `50` | Products per page |
 | `--timeout-ms N` | `5000` | HTTP timeout (ms) |
 | `--verbose` | off | Per-request debug output |
+
+
+## Testing
+
+The project uses **Google Test** for unit and integration tests. Tests are built automatically when `BUILD_TESTS=ON` (the default).
+
+### Prerequisites
+
+After adding `gtest/1.14.0` to the Conan dependencies, re-run Conan install:
+
+```powershell
+conan install . --output-folder=build --build=missing
+```
+
+Or for Debug:
+
+```powershell
+conan install . -s build_type=Debug --output-folder=build_debug --build=missing
+```
+
+Then reconfigure CMake (in Visual Studio: **Project → Delete Cache and Reconfigure**).
+
+### Unit tests (no server needed)
+
+Unit tests cover URL parsing, exponential backoff, JSON-to-Product mapping, error extraction, and throttle controller logic. They run entirely in-process with no network.
+
+```powershell
+# After building, run from the build directory:
+ctest -R unit_tests --output-on-failure
+
+# Or run the executable directly:
+.\build\build\Release\unit_tests.exe
+```
+
+### Integration tests (needs mock server)
+
+Integration tests exercise the full pipeline — HTTP client, pagination, retries, and throttling — against the bundled mock server.
+
+**1. Start the mock server** (in a separate terminal):
+
+```bash
+cd server_mock
+npm start
+```
+
+**2. Run the integration tests:**
+
+```powershell
+ctest -R integration_tests --output-on-failure
+
+# Or run the executable directly:
+.\build\build\Release\integration_tests.exe
+```
+
+If the mock server is not running, integration tests are **skipped** (not failed).
+
+### Test summary
+
+| Suite | Tests | What it covers | Needs server? |
+|-------|-------|----------------|---------------|
+| `unit_tests` | ~30 | `parseUrl`, `computeBackoffMs`, `parseProductNode`, `parseProductsPage`, `extractGraphqlErrors`, `ThrottleController` | No |
+| `integration_tests` | 5 | Full pagination, data integrity, stats, raw GraphQL requests | Yes |
+
+### Disabling tests
+
+To build without tests, pass `-DBUILD_TESTS=OFF` to CMake:
+
+```powershell
+cmake -B build -DBUILD_TESTS=OFF
+```
 
 
 ## Example output

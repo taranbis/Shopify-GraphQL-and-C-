@@ -5,7 +5,8 @@
  *   - products(first, after) with cursor-based pagination
  *   - Shopify-style GIDs  (gid://shopify/Product/<n>)
  *   - extensions.cost / throttleStatus on every response
- *   - Occasional simulated 503 for retry testing (~3 %)
+ *   - Shopify-style 429 throttle enforcement when budget is exhausted
+ *   - Occasional simulated 503 for retry testing (~10 %)
  *   - GraphQL-level errors for malformed cursors / invalid args
  */
 
@@ -54,26 +55,22 @@ function computeRequestCost(first) {
   return 2 + first;
 }
 
-function updateThrottle(requestedCost) {
+/// Restore budget points based on elapsed time since last request.
+function restoreBudget() {
   const now = Date.now();
   const elapsedSec = (now - throttle.lastRequestTime) / 1000;
-
-  // Restore points proportional to elapsed time.
   throttle.currentlyAvailable = Math.min(
     throttle.maximumAvailable,
     throttle.currentlyAvailable + elapsedSec * throttle.restoreRate
   );
-
-  // Deduct the cost of this request.
-  throttle.currentlyAvailable = Math.max(
-    0,
-    throttle.currentlyAvailable - requestedCost
-  );
   throttle.lastRequestTime = now;
+}
 
+/// Build the extensions.cost object for the response.
+function buildCostInfo(requestedCost, actualCost) {
   return {
     requestedQueryCost: requestedCost,
-    actualQueryCost: requestedCost,
+    actualQueryCost: actualCost !== undefined ? actualCost : requestedCost,
     throttleStatus: {
       maximumAvailable: throttle.maximumAvailable,
       currentlyAvailable:
@@ -188,10 +185,30 @@ app.post("/graphql", async (req, res) => {
     });
   }
 
-  // Compute cost using the `first` variable (default 10 if missing).
+  // Compute cost and restore budget based on elapsed time.
   const first = (variables && variables.first) || 10;
   const requestedCost = computeRequestCost(first);
-  const costInfo = updateThrottle(requestedCost);
+  restoreBudget();
+
+  // Enforce throttle: reject if budget is insufficient (Shopify-style 429).
+  if (throttle.currentlyAvailable < requestedCost) {
+    console.log(
+      `[mock] 429 Throttled (available=${throttle.currentlyAvailable.toFixed(
+        2
+      )}, cost=${requestedCost})`
+    );
+    return res.status(429).json({
+      errors: [{ message: "Throttled" }],
+      extensions: { cost: buildCostInfo(requestedCost, 0) },
+    });
+  }
+
+  // Deduct the cost of this request.
+  throttle.currentlyAvailable = Math.max(
+    0,
+    throttle.currentlyAvailable - requestedCost
+  );
+  const costInfo = buildCostInfo(requestedCost);
 
   try {
     const result = await graphql({

@@ -12,10 +12,9 @@ find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL QUIET)
 find_package(Threads REQUIRED)
 
-# ---- Target ---------------------------------------------------------------
+# ---- Library (shared between main executable and tests) --------------------
 
-set(SOURCES
-    src/main.cpp
+set(LIB_SOURCES
     src/graphql_client.cpp
     src/throttle.cpp
     src/pagination.cpp
@@ -23,12 +22,12 @@ set(SOURCES
     src/util.cpp
 )
 
-add_executable(graphql_sync ${SOURCES})
+add_library(graphql_sync_lib STATIC ${LIB_SOURCES})
 
-target_include_directories(graphql_sync PRIVATE src)
+target_include_directories(graphql_sync_lib PUBLIC src)
 
-target_link_libraries(graphql_sync
-    PRIVATE
+target_link_libraries(graphql_sync_lib
+    PUBLIC
         Boost::system
         Threads::Threads
         nlohmann_json::nlohmann_json
@@ -37,16 +36,15 @@ target_link_libraries(graphql_sync
 # ---- Platform specifics ---------------------------------------------------
 
 if(WIN32)
-    # Winsock libraries required by Boost.Asio on Windows.
-    target_link_libraries(graphql_sync PRIVATE ws2_32 mswsock)
+    target_link_libraries(graphql_sync_lib PUBLIC ws2_32 mswsock)
 endif()
 
 # ---- Optional SSL support -------------------------------------------------
 
 if(OpenSSL_FOUND)
     message(STATUS "OpenSSL found — HTTPS support enabled")
-    target_compile_definitions(graphql_sync PRIVATE GRAPHQL_SYNC_HAS_SSL)
-    target_link_libraries(graphql_sync PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(graphql_sync_lib PUBLIC GRAPHQL_SYNC_HAS_SSL)
+    target_link_libraries(graphql_sync_lib PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 else()
     message(STATUS "OpenSSL not found — HTTPS support disabled (HTTP only)")
 endif()
@@ -54,7 +52,57 @@ endif()
 # ---- Compiler warnings ----------------------------------------------------
 
 if(MSVC)
+    target_compile_options(graphql_sync_lib PRIVATE /W4)
+else()
+    target_compile_options(graphql_sync_lib PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# ---- Main executable -------------------------------------------------------
+
+add_executable(graphql_sync src/main.cpp)
+target_link_libraries(graphql_sync PRIVATE graphql_sync_lib)
+
+if(MSVC)
     target_compile_options(graphql_sync PRIVATE /W4)
 else()
     target_compile_options(graphql_sync PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# ---- Tests -----------------------------------------------------------------
+
+option(BUILD_TESTS "Build unit and integration tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    find_package(GTest REQUIRED)
+
+    # Unit tests (no network needed)
+    add_executable(unit_tests
+        tests/test_util.cpp
+        tests/test_mapping.cpp
+        tests/test_throttle.cpp
+    )
+    target_link_libraries(unit_tests PRIVATE graphql_sync_lib GTest::gtest_main)
+
+    if(MSVC)
+        target_compile_options(unit_tests PRIVATE /W4)
+    else()
+        target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME unit_tests COMMAND unit_tests)
+
+    # Integration tests (requires mock server running on localhost:4000)
+    add_executable(integration_tests
+        tests/test_integration.cpp
+    )
+    target_link_libraries(integration_tests PRIVATE graphql_sync_lib GTest::gtest_main)
+
+    if(MSVC)
+        target_compile_options(integration_tests PRIVATE /W4)
+    else()
+        target_compile_options(integration_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME integration_tests COMMAND integration_tests)
 endif()
