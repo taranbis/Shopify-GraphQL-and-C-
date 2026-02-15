@@ -1,68 +1,91 @@
-# graphql_sync — C++ GraphQL Client with Shopify-Style Pagination & Throttling
+# graphql_sync
 
-A production-style portfolio project demonstrating how to migrate a C++ Shopify REST integration to the **Shopify Admin GraphQL API**, covering:
+C++ GraphQL client with **Shopify-style pagination** and **cost-based throttling**. Demonstrates migrating a C++ Shopify REST integration to the Shopify Admin GraphQL API.
 
-- **Cursor-based pagination** (`products(first:, after:)` / `pageInfo.hasNextPage`)
-- **Cost-based rate limiting** using `extensions.cost.throttleStatus`
-- **Robust retries** with exponential back-off + jitter on HTTP 429, 5xx, and timeouts
-- **GraphQL error handling** — HTTP 200 responses that contain `"errors": [...]`
+**Features**
 
-Everything runs locally against a bundled Node.js mock server — no Shopify credentials needed.
+- Cursor-based pagination (`products(first:, after:)` / `pageInfo.hasNextPage`)
+- Cost-based rate limiting via `extensions.cost.throttleStatus`
+- Retries with exponential back-off + jitter (HTTP 429, 5xx, timeouts)
+- GraphQL error handling (HTTP 200 with `"errors": [...]` in body)
 
----
+Runs locally against a bundled Node.js mock server — no Shopify credentials required.
+
+
+## Table of contents
+
+- [Repository layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Run](#run)
+- [Example output](#example-output)
+- [Design](#design)
+- [License](#license)
+
 
 ## Repository layout
 
 ```
 /
-├── CMakeLists.txt              # C++20 CMake build
-├── README.md                   # ← you are here
+├── CMakeLists.txt
+├── CMakePresets.json
+├── CMakeUserPresets.json
+├── README.md
+├── conanfile.txt
 ├── src/
-│   ├── main.cpp                # CLI entry point
-│   ├── graphql_client.hpp/cpp  # Boost.Beast HTTP(S) GraphQL client
-│   ├── throttle.hpp/cpp        # Cost-aware sleep controller
-│   ├── pagination.hpp/cpp      # Cursor pagination + retry orchestrator
-│   ├── mapping.hpp/cpp         # JSON → C++ struct mapping
-│   ├── models.hpp              # Product struct
-│   ├── queries.hpp             # GraphQL query strings
-│   └── util.hpp/cpp            # URL parsing, sleep, backoff helpers
-└── server_mock/
-    ├── package.json
-    ├── index.js                # Express + graphql-js mock server
-    └── README.md
+│   ├── main.cpp
+│   ├── graphql_client.hpp/cpp
+│   ├── throttle.hpp/cpp
+│   ├── pagination.hpp/cpp
+│   ├── mapping.hpp/cpp
+│   ├── models.hpp
+│   ├── queries.hpp
+│   └── util.hpp/cpp
+├── server_mock/
+│   ├── package.json
+│   ├── index.js
+│   └── README.md
+└── docs/
+    └── example-output.png
 ```
 
----
 
 ## Prerequisites
 
-| Tool | Version |
-|---|---|
-| C++ compiler | C++20 (MSVC 2019+, GCC 10+, Clang 12+) |
-| CMake | ≥ 3.16 |
-| Boost | ≥ 1.75 (Beast / Asio / System) |
-| Node.js | ≥ 16 |
-| OpenSSL | _optional_ — enables HTTPS support |
+| Requirement | Notes |
+|-------------|--------|
+| **C++20** | MSVC 2019+, GCC 10+, Clang 12+ |
+| **CMake** | ≥ 3.16 |
+| **Node.js** | ≥ 16 (for mock server) |
+| **OpenSSL** | Optional; enables HTTPS |
 
-### Installing Boost (Windows / vcpkg)
+### Conan (recommended)
 
+Conan supplies **Boost**, **nlohmann_json**, and **OpenSSL**. Install [Conan](https://conan.io/) and use the project presets.
+
+**Release (one-time):**
 ```powershell
-vcpkg install boost-beast boost-asio boost-system
+conan install . --output-folder=build --build=missing
 ```
 
-### Installing Boost (Linux / macOS)
-
-```bash
-# Ubuntu / Debian
-sudo apt install libboost-all-dev
-
-# macOS (Homebrew)
-brew install boost
+**Debug (for `conan-debug` preset):**
+```powershell
+conan install . -s build_type=Debug --output-folder=build_debug --build=missing
 ```
 
----
+In Visual Studio, select **conan-release** or **conan-debug** in the CMake preset dropdown — not "x64 Debug" / "x64 Release".  
+**Troubleshooting:** "Could NOT find Boost" or "Could NOT find nlohmann_json" → switch to a Conan preset and use **Project** → **Delete Cache and Reconfigure**.
 
-## 1. Start the mock server
+### Without Conan
+
+- **Windows (vcpkg):** `vcpkg install boost-beast boost-asio boost-system` then pass `-DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcpkg.cmake` to CMake.
+- **Linux (apt):** `sudo apt install libboost-all-dev`
+- **macOS (Homebrew):** `brew install boost`
+
+
+## Quick start
+
+**1. Start the mock server**
 
 ```bash
 cd server_mock
@@ -70,97 +93,53 @@ npm install
 npm start
 ```
 
-You should see:
+You should see: `Mock Shopify GraphQL server running at http://localhost:4000/graphql`
 
-```
-Mock Shopify GraphQL server running at http://localhost:4000/graphql
-  Products : 500
-  Throttle : max=1000  restore=50/s
-```
+**2. Build the C++ client**
 
----
+- **With Conan:** Open the project in Visual Studio, choose **conan-release** (or **conan-debug**), then build.
+- **Without Conan:**
+  ```bash
+  cmake -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --config Release
+  ```
 
-## 2. Build the C++ client
 
-```bash
-# From the repository root:
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
+## Run
 
-> **Windows with vcpkg:**  
-> Pass `-DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcpkg.cmake` to the first cmake command.
-
-### Conan (Windows)
-
-If you use Conan, run `conan install` for each configuration you need. **CMakeUserPresets.json** includes the Conan-generated presets and adds **conan-debug** (Debug build with its own Conan install). Available build presets:
-
-| Preset          | Description |
-|-----------------|-------------|
-| `conan-release` | Release (from Conan generators in `build/`) |
-| `conan-debug`   | Debug (uses separate Conan install in `build_debug/`) |
-
-**One-time setup:**
-
-1. **Release** (you likely have this already):
-   ```powershell
-   conan install . --output-folder=build --build=missing
-   ```
-   (Or with short form: `conan install . -of=build --build=missing`. Omit `-s build_type=Release` if your default profile is already Release.)
-2. **Debug** (required for the `conan-debug` preset so headers like `nlohmann/json.hpp` are found):
-   ```powershell
-   conan install . -s build_type=Debug --output-folder=build_debug --build=missing
-   ```
-
-**Then select a Conan preset:** In Visual Studio, use the CMake preset dropdown (toolbar or **Project** → **CMake Settings**) and choose **conan-debug** or **conan-release** — **not** "x64 Debug" or "x64 Release". Those defaults do not use the Conan toolchain, so Boost and other dependencies will not be found.
-
-Debug builds use `build_debug/build/`; Release uses `build/build/`.
-
-**Troubleshooting — "Could NOT find Boost" / "Could NOT find nlohmann_json":**  
-You are not using a Conan preset. Select **conan-release** or **conan-debug** from the CMake preset dropdown, then **Project** → **Delete Cache and Reconfigure** (or delete the build folder and configure again).
-
----
-
-## 3. Run
-
-**Command line (Windows):**
+**Windows:**
 ```powershell
 .\build\build\Release\graphql_sync.exe --endpoint http://localhost:4000/graphql --total 250 --page-size 50 --timeout-ms 5000
 ```
 
-**Command line (Linux/macOS):**
+**Linux/macOS:**
 ```bash
-./build/graphql_sync \
-  --endpoint http://localhost:4000/graphql \
-  --total 250 \
-  --page-size 50 \
-  --timeout-ms 5000
+./build/graphql_sync --endpoint http://localhost:4000/graphql --total 250 --page-size 50 --timeout-ms 5000
 ```
 
-Add `--verbose` for per-request diagnostics.
+Use `--verbose` for per-request logs.
 
-### Running from Visual Studio 2022 with arguments
-
-1. **Startup dropdown:** Set the **Startup Item** to **graphql_sync (mock server args)** (or **graphql_sync (verbose)**). The repo includes **launch.vs.json** with these profiles and the README arguments; they appear in the dropdown when you open the folder as a CMake project.
-2. **Or set arguments manually:** Right‑click the `graphql_sync` target → **Debug and Launch Settings** → edit the config, or: **Project** → **graphql_sync Properties** → **Configuration Properties** → **Debugging** → **Command Arguments** and set:
-   ```
-   --endpoint http://localhost:4000/graphql --total 250 --page-size 50 --timeout-ms 5000
-   ```
-3. Start the mock server (see §1), then press **F5** or **Ctrl+F5** to run.
+**From Visual Studio 2022:** Set **Startup Item** to **graphql_sync (mock server args)** (see `launch.vs.json`), or set **Command Arguments** to:
+`--endpoint http://localhost:4000/graphql --total 250 --page-size 50 --timeout-ms 5000`
 
 ### CLI options
 
 | Flag | Default | Description |
-|---|---|---|
+|------|---------|-------------|
 | `--endpoint URL` | `http://localhost:4000/graphql` | GraphQL endpoint |
 | `--total N` | `250` | Max products to fetch |
-| `--page-size N` | `50` | Products per page (`first`) |
+| `--page-size N` | `50` | Products per page |
 | `--timeout-ms N` | `5000` | HTTP timeout (ms) |
-| `--verbose` | off | Print per-request debug info |
+| `--verbose` | off | Per-request debug output |
 
----
 
 ## Example output
+
+With `--verbose`, you’ll see GraphQL requests, pagination, and throttle sleeps. Example:
+
+![Example console output showing GraphQL requests, paginator and throttle logs, and fetched products list](docs/example-output.png)
+
+**Without verbose**, a typical run looks like:
 
 ```
 === graphql_sync ===
@@ -172,11 +151,10 @@ Verbose:    no
 ====================
 
 --- Fetched Products (250) ---
-   1  gid://shopify/Product/1001            Product 1 - Widget                        2024-01-01T01:00:00.000Z
-   2  gid://shopify/Product/1002            Product 2 - Gadget                        2024-01-01T02:00:00.000Z
-   3  gid://shopify/Product/1003            Product 3 - Doohickey                     2024-01-01T03:00:00.000Z
+   1  gid://shopify/Product/1001   Product 1 - Widget       2024-01-01T01:00:00.000Z
+   2  gid://shopify/Product/1002   Product 2 - Gadget      2024-01-01T02:00:00.000Z
    ...
- 250  gid://shopify/Product/1250            Product 250 - Gizmo                       2024-01-11T10:00:00.000Z
+ 250  gid://shopify/Product/1250   Product 250 - Gizmo      2024-01-11T10:00:00.000Z
 
 === Summary Report ===
 Total fetched:       250
@@ -187,78 +165,23 @@ Avg query cost:      52.00
 ======================
 ```
 
----
+## Design
 
-## Key design decisions
+**GraphQL errors in HTTP 200** — The client always checks for `"errors": [...]` in the body before using `data`.
 
-### GraphQL errors inside HTTP 200
+**Cursor pagination** — Uses `edges[].cursor` and `pageInfo.hasNextPage`; the last cursor is sent as `after` on the next request.
 
-Shopify (and GraphQL in general) may return a 200 OK whose body contains
-`"errors": [...]`. The client checks for this **before** treating the data as
-valid, and prints user-friendly messages.
+**Cost-based throttling** — Reads `extensions.cost.throttleStatus` and sleeps before the next request when the remaining budget is too low.
 
-### Cursor pagination
-
-Each page returns `edges[].cursor` and `pageInfo.hasNextPage`. The last cursor
-from the page is passed as the `after` variable in the next request. This
-continues until the requested total is reached or no more pages remain.
-
-### Cost-based throttling
-
-Every Shopify GraphQL response includes `extensions.cost.throttleStatus`:
-
-```json
-{
-  "extensions": {
-    "cost": {
-      "requestedQueryCost": 52,
-      "actualQueryCost": 52,
-      "throttleStatus": {
-        "maximumAvailable": 1000,
-        "currentlyAvailable": 844,
-        "restoreRate": 50
-      }
-    }
-  }
-}
-```
-
-`ThrottleController` reads these fields and, before the next request, sleeps
-exactly long enough for the bucket to restore to `requestedQueryCost + margin`.
-
-### Retry policy
+**Retry policy**
 
 | Condition | Action |
-|---|---|
-| HTTP 429 (rate limit) | Retry with back-off |
-| HTTP 5xx | Retry with back-off |
-| Network timeout | Retry with back-off |
+|-----------|--------|
+| HTTP 429, 5xx, timeout | Retry with back-off (6 attempts, 200 ms → 5000 ms + jitter) |
 | Other errors | Fail immediately |
 
-Back-off schedule: **200 ms → 400 → 800 → 1600 → 3200 → 5000 ms** (capped),
-with ±100 ms random jitter. Maximum **6 attempts**.
-
-### SSL / HTTPS
-
-If OpenSSL is detected at build time, HTTPS endpoints are supported
-transparently (Boost.Beast SSL stream + SNI). Without OpenSSL the build
-succeeds but only HTTP endpoints work. The mock server uses plain HTTP.
-
----
-
-## Coding style
-
-| Element | Convention | Example |
-|---|---|---|
-| Classes / structs | PascalCase | `GraphQLClient`, `PageResult` |
-| Functions | camelCase | `parseUrl()`, `fetchAllProducts()` |
-| Local variables | camelCase | `pageSize`, `allProducts` |
-| Class members | `m` prefix + PascalCase | `mHost`, `mVerbose`, `mTimeoutMs` |
-| Constants | `k` prefix + PascalCase | `kMaxAttempts`, `kProductsQuery` |
-
----
+**HTTPS** — Supported when OpenSSL is available at build time; the mock server uses HTTP.
 
 ## License
 
-This project is provided as a portfolio demonstration and is available under
-the MIT License.
+MIT License.
